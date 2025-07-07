@@ -12,7 +12,7 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app, supports_credentials=True)
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password@localhost:5432/postgres")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:TVyARhnLwhzXPpnPJvKifrPvOpVSbCxp@shortline.proxy.rlwy.net:57328/railway")
 
 def get_conn():
     return psycopg2.connect(DATABASE_URL)
