@@ -1,0 +1,67 @@
+<!-- templates/invitees.html -->
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>邀请用户列表</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+</head>
+<body class="p-4">
+  <h3 class="mb-4">被邀请用户列表</h3>
+  <table class="table table-bordered table-hover">
+    <thead class="table-light">
+      <tr>
+        <th>用户ID</th>
+        <th>用户名</th>
+        <th>手机号</th>
+        <th>积分</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in invitees %}
+      <tr>
+        <td>{{ u.user_id }}</td>
+        <td>{{ u.username }}</td>
+        <td>{{ u.phone or '未授权' }}</td>
+        <td>{{ u.points }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <a href="/admin" class="btn btn-secondary">返回后台</a>
+</body>
+</html>
+
+<!-- templates/user_logs.html -->
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>游戏记录</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+</head>
+<body class="p-4">
+  <h3 class="mb-4">游戏记录</h3>
+  <table class="table table-bordered table-striped">
+    <thead class="table-light">
+      <tr>
+        <th>时间</th>
+        <th>玩家</th>
+        <th>AI</th>
+        <th>结果</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for log in logs %}
+      <tr>
+        <td>{{ log.timestamp | format_datetime }}</td>
+        <td>{{ log.user_roll }}</td>
+        <td>{{ log.bot_roll }}</td>
+        <td>{{ log.result }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <a href="/admin" class="btn btn-secondary">返回后台</a>
+</body>
+</html>

@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>Telegram 用户后台管理</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Bootstrap 5 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- daterangepicker 依赖 -->
+  <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css" />
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js"></script>
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
+  <style>
+    body { background: #f6f7fb; font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif;}
+    .navbar { box-shadow: 0 2px 10px 0 #eaeaea; }
+    .card { border-radius: 18px; box-shadow: 0 2px 12px 0 #e3e9f5;}
+    .stats-bar { font-size: 1.05rem; background: #f0f6ff; border-radius: 12px; }
+    .table thead th { background: #eaf1fb !important; font-weight: bold;}
+    .table-bordered { border-radius: 12px; overflow: hidden;}
+    .btn, .form-select, .form-control { border-radius: 1.5rem;}
+    .btn-primary, .btn-success, .btn-danger, .btn-info { font-weight: 500;}
+    .btn-sm { font-size: 0.92rem;}
+    .table-hover tbody tr:hover { background: #f5f8fe;}
+    @media (max-width: 900px) {
+      .container { padding: 0.6rem;}
+      .table { font-size: 0.97rem;}
+      .navbar-brand { font-size: 1.08rem;}
+      .card { padding: 0.5rem;}
+    }
+    @media (max-width: 600px) {
+      .table-responsive { font-size: 0.93rem;}
+      .stats-bar { font-size: 0.98rem;}
+      .daterangepicker { font-size: 0.95rem;}
+    }
+    /* daterangepicker视觉细化 */
+    .daterangepicker td.available:hover, .daterangepicker th.available:hover {
+      background: #eaf1fb;
+      color: #2366d1;
+    }
+    .daterangepicker .ranges li.active {
+      background-color: #2366d1;
+      color: #fff;
+    }
+  </style>
+  <script>
+async function saveUser(userId) {
+  const blocked = document.getElementById('blocked-' + userId).value;
+  const points = document.getElementById('points-' + userId).value;
+  const token = document.getElementById('token-' + userId).value;
+
+  await fetch(`/user/save`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId, blocked, points, token })
+  });
+  alert('✅ 已保存');
+}
+
+async function deleteUser(userId) {
+  if (!confirm('确认删除该用户吗？')) return;
+  await fetch(`/user/delete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId })
+  });
+  location.reload();
+}
+
+$(function() {
+  // 取后端传入的起止值
+  let start = "{{ request.args.get('start_date', '') }}";
+  let end = "{{ request.args.get('end_date', '') }}";
+  let val = "";
+  if (start && end) {
+    val = start + " - " + end;
+    $('#date-range').val(val);
+  }
+
+  $('#date-range').daterangepicker({
+    autoUpdateInput: false,
+    locale: {
+      format: 'YYYY-MM-DD',
+      applyLabel: "确定",
+      cancelLabel: "清空",
+      fromLabel: "起始",
+      toLabel: "结束",
+      customRangeLabel: "自定义",
+      daysOfWeek: ["日", "一", "二", "三", "四", "五", "六"],
+      monthNames: ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"]
+    },
+    ranges: {
+       '今日': [moment(), moment()],
+       '本周': [moment().startOf('week'), moment().endOf('week')],
+       '本月': [moment().startOf('month'), moment().endOf('month')],
+       '全部': [moment("2020-01-01"), moment()]
+    }
+  });
+
+  $('#date-range').on('apply.daterangepicker', function(ev, picker) {
+    $('#start_date').val(picker.startDate.format('YYYY-MM-DD'));
+    $('#end_date').val(picker.endDate.format('YYYY-MM-DD'));
+    $(this).val(picker.startDate.format('YYYY-MM-DD') + ' - ' + picker.endDate.format('YYYY-MM-DD'));
+  });
+
+  $('#date-range').on('cancel.daterangepicker', function(ev, picker) {
+    $('#start_date').val('');
+    $('#end_date').val('');
+    $(this).val('');
+  });
+});
+  </script>
+</head>
+<body>
+  <!-- 顶部导航栏 -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-white mb-4">
+    <div class="container">
+      <a class="navbar-brand fw-bold text-primary" href="#">Telegram 用户后台管理</a>
+      <div class="ms-auto">
+        <a href="/admin" class="btn btn-outline-secondary btn-sm me-2">&#128260; 刷新</a>
+        <a href="/admin/rank/today" class="btn btn-outline-primary btn-sm me-2">&#128200; 今日排行榜</a>
+      </div>
+    </div>
+  </nav>
+  <div class="container" style="max-width: 98vw;">
+    <div class="card p-4 mb-4">
+      <!-- 搜索表单：日期区间 + 关键词 + 状态 + 每页条数 -->
+      <form class="row g-2 align-items-center mb-3" method="get" action="/admin" autocomplete="off">
+        <div class="col-12 col-md-4">
+          <input type="text" id="date-range" class="form-control" placeholder="选择日期区间" readonly
+                 style="background:#fff;cursor:pointer;">
+          <input type="hidden" id="start_date" name="start_date" value="{{ request.args.get('start_date', '') }}">
+          <input type="hidden" id="end_date" name="end_date" value="{{ request.args.get('end_date', '') }}">
+        </div>
+        <div class="col-12 col-md-3">
+          <input type="text" class="form-control" name="q" placeholder="用户名 / 手机号 / 邀请人用户名" value="{{ request.args.q or '' }}">
+        </div>
+        <div class="col-6 col-md-2">
+          <select class="form-select" name="filter">
+            <option value="">全部</option>
+            <option value="0" {% if request.args.filter == '0' %}selected{% endif %}>未封禁</option>
+            <option value="1" {% if request.args.filter == '1' %}selected{% endif %}>已封禁</option>
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <select class="form-select" name="page_size" onchange="this.form.submit()">
+            {% for sz in [10,20,50,100] %}
+              <option value="{{ sz }}" {% if page_size == sz %}selected{% endif %}>每页{{ sz }}条</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12 col-md-1">
+          <button class="btn btn-primary w-100" type="submit">搜索</button>
+        </div>
+      </form>
+      <!-- 数据统计栏 -->
+      <div class="stats-bar px-3 py-2 mb-3 border">
+        总用户数: <b>{{ stats.total }}</b> &nbsp;|&nbsp; 已授权手机号: <b class="text-success">{{ stats.verified }}</b>
+        &nbsp;|&nbsp; 已封禁用户: <b class="text-danger">{{ stats.blocked }}</b> &nbsp;|&nbsp; 总积分: <b class="text-primary">{{ stats.points }}</b>
+      </div>
+      <!-- 用户表格 -->
+      <div class="table-responsive">
+        <table class="table table-bordered table-striped table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>用户ID</th><th>用户名</th><th>手机号</th><th>积分</th><th>当日最高积分</th>
+              <th>剩余次数（token）</th><th>邀请人</th><th>已邀请</th><th>封禁状态</th>
+              <th>注册时间</th><th>最后游戏时间</th><th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for user in users %}
+            <tr>
+              <td>{{ user.user_id }}</td>
+              <td>{{ user.username }}</td>
+              <td>{{ user.phone or '未授权' }}</td>
+              <td>
+                <input type="number" id="points-{{ user.user_id }}" value="{{ user.points or 0 }}" class="form-control form-control-sm">
+              </td>
+              <td>{{ user.daily_max_score }}</td>
+              <td>
+                <input type="number" id="token-{{ user.user_id }}" value="{{ user.token or 0 }}" class="form-control form-control-sm">
+              </td>
+              <td>{{ user.inviter or '无' }}</td>
+              <td>
+                已邀请 {{ user.invited_count }} 人
+                {% if (user.invited_count or 0) > 0 %}
+                  <a class="btn btn-sm btn-outline-primary ms-1" href="/invitees?user_id={{ user.user_id }}">查看</a>
+                {% endif %}
+              </td>
+              <td>
+                <select id="blocked-{{ user.user_id }}" class="form-select form-select-sm">
+                  <option value="0" {% if not user.blocked %}selected{% endif %}>否</option>
+                  <option value="1" {% if user.blocked %}selected{% endif %}>是</option>
+                </select>
+              </td>
+              <td>{{ user.created_at | format_datetime }}</td>
+              <td>{{ user.last_game_time | format_datetime }}</td>
+              <td>
+                <button class="btn btn-success btn-sm mb-1" onclick="saveUser('{{ user.user_id }}')">保存</button>
+                <button class="btn btn-danger btn-sm mb-1" onclick="deleteUser('{{ user.user_id }}')">删除</button>
+                <a class="btn btn-info btn-sm mt-1" href="/user/logs?user_id={{ user.user_id }}">游戏记录</a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <!-- 分页控件 -->
+      <nav aria-label="分页" class="mt-3">
+        <ul class="pagination justify-content-center">
+          <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+            <a class="page-link" href="?page={{ page-1 }}&page_size={{ page_size }}{{ qstr }}" aria-label="上一页">
+              <span aria-hidden="true">&laquo;</span>
+            </a>
+          </li>
+          {% for p in range(1, total_pages+1) %}
+            {% if total_pages <= 7 or p <= 2 or p > total_pages-2 or (p >= page-1 and p <= page+1) %}
+              <li class="page-item {% if page == p %}active{% endif %}">
+                <a class="page-link" href="?page={{ p }}&page_size={{ page_size }}{{ qstr }}">{{ p }}</a>
+              </li>
+            {% elif p == 3 and page > 4 %}
+              <li class="page-item disabled"><span class="page-link">…</span></li>
+            {% elif p == total_pages-2 and page < total_pages-3 %}
+              <li class="page-item disabled"><span class="page-link">…</span></li>
+            {% endif %}
+          {% endfor %}
+          <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+            <a class="page-link" href="?page={{ page+1 }}&page_size={{ page_size }}{{ qstr }}" aria-label="下一页">
+              <span aria-hidden="true">&raquo;</span>
+            </a>
+          </li>
+        </ul>
+      </nav>
+    </div>
+  </div>
+</body>
+</html>

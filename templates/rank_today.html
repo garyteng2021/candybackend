@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>排行榜</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Bootstrap 5 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <style>
+    body { background: #f6f7fb; font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif;}
+    .card { border-radius: 18px; box-shadow: 0 2px 12px 0 #e3e9f5;}
+    .table thead th { background: #eaf1fb !important; font-weight: bold;}
+    .table-hover tbody tr:hover { background: #f0f8ff;}
+    .table .top1 {background: #ffecc0;}
+    .table .top2 {background: #ecf7ff;}
+    .table .top3 {background: #e8ffd7;}
+    .rank-badge {
+      display: inline-block; min-width: 38px; text-align: center;
+      font-weight: 700; border-radius: 1.2rem;
+    }
+    .rank-1 { background: #ffd700; color: #fff; }
+    .rank-2 { background: #5dc2ff; color: #fff; }
+    .rank-3 { background: #66d282; color: #fff; }
+    .back-link { text-decoration: none;}
+    @media (max-width: 900px) {
+      .container { padding: 0.6rem;}
+      .table { font-size: 0.97rem;}
+    }
+    @media (max-width: 600px) {
+      .table-responsive { font-size: 0.93rem;}
+    }
+  </style>
+</head>
+<body>
+  <div class="container" style="max-width: 900px;">
+    <div class="my-4">
+      <a class="btn btn-outline-primary btn-sm back-link" href="/admin">&#8592; 返回后台管理</a>
+    </div>
+    <div class="card p-4">
+      <!-- 日期选择器表单 -->
+      <form class="row g-2 align-items-center mb-4" method="get" action="/admin/rank/today">
+        <div class="col-auto">
+          <input type="date" class="form-control" name="date" value="{{ date }}">
+        </div>
+        <div class="col-auto">
+          <button class="btn btn-primary" type="submit">查看榜单</button>
+        </div>
+      </form>
+      <h4 class="mb-4">排行榜 <span class="fs-6 text-muted">({{ date or '今日' }}) 前20名</span></h4>
+      <div class="table-responsive">
+        <table class="table table-bordered table-striped table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>排名</th>
+              <th>用户ID</th>
+              <th>用户名</th>
+              <th>手机号</th>
+              <th>积分</th>
+              <th>注册时间</th>
+              <th>最后游戏时间</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for user in users %}
+            <tr class="top{{ loop.index if loop.index <=3 else '' }}">
+              <td>
+                {% if loop.index == 1 %}
+                  <span class="rank-badge rank-1">🥇 1</span>
+                {% elif loop.index == 2 %}
+                  <span class="rank-badge rank-2">🥈 2</span>
+                {% elif loop.index == 3 %}
+                  <span class="rank-badge rank-3">🥉 3</span>
+                {% else %}
+                  {{ loop.index }}
+                {% endif %}
+              </td>
+              <td>{{ user.user_id }}</td>
+              <td>{{ user.username }}</td>
+              <td>{{ user.phone or '未授权' }}</td>
+              <td class="fw-bold text-primary">{{ user.points }}</td>
+              <td>{{ user.created_at|format_datetime }}</td>
+              <td>{{ user.last_game_time|format_datetime }}</td>
+            </tr>
+            {% endfor %}
+            {% if not users %}
+            <tr>
+              <td colspan="7" class="text-center text-muted py-4">暂无数据</td>
+            </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

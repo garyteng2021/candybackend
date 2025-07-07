@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>三消积分游戏</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <style>
+    html,body {
+      height: 100%; margin: 0; padding: 0;
+      background: linear-gradient(120deg, #23243a 0%, #1c2037 100%);
+      overscroll-behavior: none;
+    }
+    body { font-family: 'Segoe UI', Arial, sans-serif; color: #fff; }
+    h1 {text-align:center; letter-spacing:2px; margin:1.2em 0 0.5em; font-weight:800; text-shadow:0 4px 22px #5d7aff55;}
+    .game-box {
+      background:rgba(30,34,55,0.98); border-radius:24px; margin:0 auto; max-width:480px;
+      box-shadow:0 8px 38px #0009; padding:18px 8px 16px 8px;
+      touch-action: none;   /* 兼容Safari 禁止父div滑动 */
+    }
+    #gameCanvas {
+      background: linear-gradient(160deg,#252845 80%,#1d1e30 100%);
+      display:block; margin:0 auto 18px auto; border-radius:22px; box-shadow:0 8px 32px #4349c033,0 1.5px 4px #0007;
+      touch-action: none;
+      -webkit-user-select: none; user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      width: 98vw; height: 98vw; max-width: 480px; max-height: 480px; min-width: 220px; min-height: 220px;
+    }
+    #scorebar {
+      font-size:1.14rem; letter-spacing:.03em; display:flex; justify-content:center; gap:1.6em; margin-bottom:10px;
+      background:rgba(255,255,255,0.11); border-radius:16px; box-shadow:0 0.5px 4px #2234d044; padding:7px 0 3px 0;
+      font-weight:600;
+    }
+    #gameOverModal { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(20,18,34,0.97);
+      color: #fff; display: none; justify-content: center; align-items: center; flex-direction: column; z-index:99; }
+    #gameOverModal button { padding: 13px 36px; margin-top: 28px; background: linear-gradient(90deg,#28c7fa,#5468ff 95%);
+      color: white; border: none; border-radius: 10px; font-size:1.13rem; cursor: pointer; font-weight:700; box-shadow:0 2px 10px #28c7fa22;}
+    #gameOverModal button:hover { background:linear-gradient(90deg,#5468ff,#28c7fa);}
+    #controlButton { margin:10px auto 0; padding:12px 44px; font-size:1.13rem;
+      background:linear-gradient(90deg,#ffd048,#ff7e54); color:#222; border:0; border-radius:12px;
+      font-weight:700; box-shadow:0 1px 9px #ffd0483c; cursor:pointer; transition:.16s;}
+    #controlButton:hover { background:linear-gradient(90deg,#ffe95a,#ffad54);}
+    @media (max-width: 540px) {
+      .game-box {max-width:99vw;}
+      #gameCanvas {min-width: 140px;}
+    }
+  </style>
+</head>
+<body>
+  <h1>三消积分游戏</h1>
+  <div class="game-box">
+    <canvas id="gameCanvas"></canvas>
+    <div id="scorebar">
+        <span>分数: <b id="score">0</b></span>
+        <span>步数: <b id="moves">30</b></span>
+    </div>
+    <div class="center">
+        <button id="controlButton">开始游戏</button>
+    </div>
+  </div>
+  <div id="gameOverModal">
+      <h2 style="font-size:2rem;letter-spacing:3px;">🎉 游戏结束!</h2>
+      <p style="font-size:1.18rem;margin-top:6px;">你的分数: <span id="finalScore"></span></p>
+      <button onclick="restartGame()">再玩一次</button>
+  </div>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>
+const GRID_SIZE = 8;
+let CELL_SIZE = 56;
+const PADDING = 14;
+const COLORS = [
+    ["#ff6e90", "#ffe9ef"],
+    ["#ffe457", "#fff7c5"],
+    ["#62d9ee", "#d8f5ff"],
+    ["#7df27d", "#e2ffe7"],
+    ["#b785f2", "#f3eaff"],
+    ["#ffad54", "#fff2dd"],
+];
+const MAX_MOVES = 30;
+let grid = [];
+let score = 0, movesLeft = MAX_MOVES;
+let gameActive = false;
+let selectedCell = null, animating = false;
+let isPaused = false;
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+function resizeCanvas() {
+    let parent = canvas.parentNode;
+    let parentW = parent.offsetWidth || window.innerWidth;
+    let size = Math.min(parentW, window.innerHeight - 120, 480);
+    let logical = size;
+    let pixelRatio = window.devicePixelRatio || 1;
+    canvas.width = logical * pixelRatio;
+    canvas.height = logical * pixelRatio;
+    canvas.style.width = logical + "px";
+    canvas.style.height = logical + "px";
+    CELL_SIZE = (logical - PADDING*2) / GRID_SIZE;
+    ctx.setTransform(pixelRatio,0,0,pixelRatio,0,0);
+    if (Array.isArray(grid) && grid.length && Array.isArray(grid[0]) && grid[0].length) {
+      render();
+    }
+}
+window.addEventListener('resize', function(){ setTimeout(resizeCanvas,100); });
+
+function randomColor() { return Math.floor(Math.random()*COLORS.length);}
+function fillGridNoMatch() {
+    grid = [];
+    for (let row = 0; row < GRID_SIZE; row++) {
+        grid[row] = [];
+        for (let col = 0; col < GRID_SIZE; col++) {
+            do {
+                grid[row][col] = randomColor();
+            } while (isMatchAt(row, col));
+        }
+    }
+}
+function isMatchAt(row, col) {
+    const color = grid[row][col];
+    if (col>=2 && grid[row][col-1]===color && grid[row][col-2]===color) return true;
+    if (row>=2 && grid[row-1][col]===color && grid[row-2][col]===color) return true;
+    return false;
+}
+function initGame() {
+    fillGridNoMatch();
+    score = 0; movesLeft = MAX_MOVES;
+    gameActive = false; isPaused = false; selectedCell = null; animating = false;
+    updateUI();
+    document.getElementById('controlButton').textContent = "开始游戏";
+    render();
+}
+
+function render() {
+    let s = CELL_SIZE, pad = PADDING;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.shadowColor = "#2231c6cc";
+    ctx.shadowBlur = 32;
+    ctx.fillStyle = "#202339";
+    ctx.fillRect(pad-8, pad-8, s*GRID_SIZE+16, s*GRID_SIZE+16);
+    ctx.restore();
+    for (let row = 0; row < GRID_SIZE; row++) {
+        for (let col = 0; col < GRID_SIZE; col++) {
+            if (grid[row][col] === null || grid[row][col] === undefined) continue;
+            let colorIdx = grid[row][col];
+            let x = pad + col * s, y = pad + row * s;
+            ctx.save();
+            let grad = ctx.createLinearGradient(x, y, x+s, y+s);
+            grad.addColorStop(0, COLORS[colorIdx][0]);
+            grad.addColorStop(1, COLORS[colorIdx][1]);
+            ctx.fillStyle = grad;
+            ctx.globalAlpha = 0.99;
+            ctx.fillRect(x, y, s-3, s-3);
+            ctx.globalAlpha = 1;
+            let glow = ctx.createRadialGradient(x+s/2, y+s/2, 8, x+s/2, y+s/2, s/1.15);
+            glow.addColorStop(0, "#fff9");
+            glow.addColorStop(1, COLORS[colorIdx][1]+"00");
+            ctx.fillStyle = glow;
+            ctx.fillRect(x+3, y+3, s-8, s-13);
+            ctx.strokeStyle = "#fff2";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(x, y, s-3, s-3);
+            // 高亮当前选中
+            if (selectedCell && selectedCell.row === row && selectedCell.col === col) {
+                ctx.save();
+                ctx.strokeStyle = "#28c7fa";
+                ctx.shadowColor = "#28c7fa";
+                ctx.shadowBlur = 16;
+                ctx.lineWidth = 7;
+                ctx.globalAlpha = 0.93;
+                ctx.strokeRect(x+1, y+1, s-5, s-5);
+                ctx.restore();
+            }
+            ctx.restore();
+        }
+    }
+}
+
+// ============ 三消逻辑 ============
+function getCanvasPosition(e) {
+    const rect = canvas.getBoundingClientRect();
+    let x, y;
+    if (e.touches && e.touches[0]) {
+        x = e.touches[0].clientX - rect.left;
+        y = e.touches[0].clientY - rect.top;
+    } else {
+        x = e.clientX - rect.left;
+        y = e.clientY - rect.top;
+    }
+    let scaleX = canvas.width / rect.width;
+    let scaleY = canvas.height / rect.height;
+    return {
+        x: x * scaleX,
+        y: y * scaleY
+    };
+}
+function getCellFromPosition(x, y) {
+    const col = Math.floor((x-PADDING) / CELL_SIZE);
+    const row = Math.floor((y-PADDING) / CELL_SIZE);
+    if (row >= 0 && row < GRID_SIZE && col >= 0 && col < GRID_SIZE) {
+        return { row, col };
+    }
+    return null;
+}
+function cellsEqual(cell1, cell2) {
+    return cell1 && cell2 && cell1.row === cell2.row && cell1.col === cell2.col;
+}
+function areAdjacent(cell1, cell2) {
+    const rowDiff = Math.abs(cell1.row - cell2.row);
+    const colDiff = Math.abs(cell1.col - cell2.col);
+    return (rowDiff === 1 && colDiff === 0) || (rowDiff === 0 && colDiff === 1);
+}
+
+function trySwap(cell1, cell2) {
+    if (!gameActive || animating || isPaused) return;
+    swap(cell1, cell2);
+    let matches = findMatches();
+    if (matches.length === 0) {
+        setTimeout(() => { swap(cell1, cell2); selectedCell = null; render(); }, 180);
+    } else {
+        movesLeft--;
+        processMatches(matches, function() {
+            selectedCell = null;
+            updateUI();
+            if (movesLeft <= 0) endGame();
+        });
+    }
+    render();
+}
+
+function swap(cell1, cell2) {
+    let tmp = grid[cell1.row][cell1.col];
+    grid[cell1.row][cell1.col] = grid[cell2.row][cell2.col];
+    grid[cell2.row][cell2.col] = tmp;
+}
+
+function findMatches() {
+    let matches = [];
+    for (let row = 0; row < GRID_SIZE; row++) {
+        let cnt = 1, prev = grid[row][0];
+        for (let col = 1; col < GRID_SIZE; col++) {
+            if (grid[row][col] === prev) cnt++;
+            else {
+                if (cnt >= 3) matches.push({ type:'row', row, col:col-cnt, len:cnt });
+                cnt = 1; prev = grid[row][col];
+            }
+        }
+        if (cnt >= 3) matches.push({ type:'row', row, col:GRID_SIZE-cnt, len:cnt });
+    }
+    for (let col = 0; col < GRID_SIZE; col++) {
+        let cnt = 1, prev = grid[0][col];
+        for (let row = 1; row < GRID_SIZE; row++) {
+            if (grid[row][col] === prev) cnt++;
+            else {
+                if (cnt >= 3) matches.push({ type:'col', col, row:row-cnt, len:cnt });
+                cnt = 1; prev = grid[row][col];
+            }
+        }
+        if (cnt >= 3) matches.push({ type:'col', col, row:GRID_SIZE-cnt, len:cnt });
+    }
+    return matches;
+}
+
+function processMatches(matches, cb) {
+    animating = true;
+    let toClear = Array.from({length:GRID_SIZE},()=>Array(GRID_SIZE).fill(false));
+    for (let m of matches) {
+        if (m.type==='row') for(let c=0;c<m.len;c++) toClear[m.row][m.col+c]=true;
+        else for(let r=0;r<m.len;r++) toClear[m.row+r][m.col]=true;
+    }
+    let cleared = 0;
+    for (let r = 0; r < GRID_SIZE; r++) for (let c = 0; c < GRID_SIZE; c++) if (toClear[r][c]) cleared++;
+    score += cleared * 20;
+    updateUI();
+
+    let flashCt=0;
+    let flash = setInterval(()=>{
+        for (let r=0;r<GRID_SIZE;r++) for(let c=0;c<GRID_SIZE;c++)
+            if(toClear[r][c]) grid[r][c] = null;
+        render();
+        flashCt++;
+        if (flashCt>1) {
+            clearInterval(flash);
+            dropAndFill(toClear, cb);
+        }
+    }, 100);
+}
+function dropAndFill(toClear, cb) {
+    for (let c = 0; c < GRID_SIZE; c++) {
+        let pointer = GRID_SIZE-1;
+        for (let r = GRID_SIZE-1; r >=0; r--) {
+            if (!toClear[r][c]) {
+                grid[pointer][c] = grid[r][c];
+                pointer--;
+            }
+        }
+        for (let r=pointer;r>=0;r--) grid[r][c]=randomColor();
+    }
+    render();
+    setTimeout(()=>{
+        let m = findMatches();
+        if(m.length>0) processMatches(m, cb);
+        else { animating=false; cb&&cb(); }
+    }, 140);
+}
+
+// ==================== 触控与点击操作 ====================
+let touchStartCell = null;
+let touchMoved = false;
+
+function onTouchStart(e) {
+    if (!gameActive || animating || isPaused) return;
+    const pos = getCanvasPosition(e);
+    const cell = getCellFromPosition(pos.x, pos.y);
+    if (!cell) return;
+    touchStartCell = cell;
+    touchMoved = false;
+    selectedCell = cell;
+    render();
+    e.preventDefault();
+}
+
+function onTouchMove(e) {
+    if (!gameActive || animating || isPaused || !touchStartCell) return;
+    const pos = getCanvasPosition(e);
+    const cell = getCellFromPosition(pos.x, pos.y);
+    if (!cell) return;
+    if (areAdjacent(touchStartCell, cell) && !touchMoved) {
+        trySwap(touchStartCell, cell);
+        touchMoved = true;
+        selectedCell = null; // 交换后取消高亮
+        render();
+        touchStartCell = null;
+    }
+    e.preventDefault();
+}
+
+function onTouchEnd(e) {
+    if (!touchMoved && !isPaused && touchStartCell) {
+        selectedCell = touchStartCell;
+        render();
+    }
+    touchStartCell = null;
+    touchMoved = false;
+    e.preventDefault();
+}
+
+canvas.addEventListener('touchstart', onTouchStart, {passive: false});
+canvas.addEventListener('touchmove',  onTouchMove,  {passive: false});
+canvas.addEventListener('touchend',   onTouchEnd,   {passive: false});
+
+// PC端点击
+canvas.addEventListener('click', function(e){
+    if (!gameActive || animating || isPaused) return;
+    const pos = getCanvasPosition(e);
+    const cell = getCellFromPosition(pos.x, pos.y);
+    if (!cell) return;
+    if (!selectedCell) {
+        selectedCell = cell;
+        render();
+    } else if (cellsEqual(selectedCell, cell)) {
+        selectedCell = null;
+        render();
+    } else if (areAdjacent(selectedCell, cell)) {
+        trySwap(selectedCell, cell);
+        selectedCell = null;
+        render();
+    } else {
+        selectedCell = cell;
+        render();
+    }
+});
+
+// ====================== UI更新/提交 ======================
+function updateUI() {
+    document.getElementById('score').textContent = score;
+    document.getElementById('moves').textContent = movesLeft;
+}
+function endGame() {
+    gameActive = false;
+    document.getElementById('finalScore').textContent = score;
+    document.getElementById('gameOverModal').style.display = 'flex';
+    submitScore();
+}
+function restartGame() {
+    document.getElementById('gameOverModal').style.display = 'none';
+    initGame();
+    resizeCanvas();
+}
+
+let userId = '100001'; // 替换成真实user_id
+function submitScore() {
+    $.post("/play", {
+        user_id: userId,
+        score: score,
+        game_name: "三消游戏"
+    }, function(data) {
+        // 上传成功逻辑
+    }).fail(function(err) {
+        alert("提交失败: " + (err.responseJSON?.error || "未知错误"));
+    });
+}
+
+// =========== 开始/暂停按钮 ==========
+document.getElementById('controlButton').addEventListener('click', () => {
+    if (!gameActive) {
+        initGame();
+        gameActive = true;
+        isPaused = false;
+        document.getElementById('controlButton').textContent = "暂停";
+        render();
+    } else {
+        isPaused = !isPaused;
+        document.getElementById('controlButton').textContent = isPaused ? "继续" : "暂停";
+    }
+});
+
+// ========== 页面初始化 ==========
+window.onload = function() {
+  initGame();
+  resizeCanvas();
+  setTimeout(resizeCanvas, 300);
+};
+</script>
+</body>
+</html>
